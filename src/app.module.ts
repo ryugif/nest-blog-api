@@ -8,6 +8,7 @@ import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { PostsModule } from './modules/posts/posts.module';
 import { ChatsModule } from './modules/chats/chats.module';
+import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { ChatsModule } from './modules/chats/chats.module';
     AuthModule,
     PostsModule,
     ChatsModule,
+    WhatsappModule,
   ],
   controllers: [AppController],
   providers: [AppService],
