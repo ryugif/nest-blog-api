@@ -1,4 +1,5 @@
 import { Column, DataType, Table, Model } from "sequelize-typescript";
+import { ChatPriority, MessageType, SenderType } from "../../../enums/chat.enum";
 
 @Table({
     timestamps: true,
@@ -31,19 +32,45 @@ export class Chat extends Model<Chat> {
         allowNull: false,
         defaultValue: 'LOW'
     })
-    public priority: string;
+    public priority: ChatPriority;
+
+    @Column({
+        type: DataType.ENUM('text', 'media'),
+        allowNull: false,
+        defaultValue: 'text'
+    })
+    public message_type: MessageType;
+
+    @Column({
+        type: DataType.ENUM('user', 'customer', 'bot'),
+        allowNull: false,
+        defaultValue: 'user'
+    })
+    public sender_type: SenderType;
+
+    @Column({
+        type: DataType.INTEGER,
+        allowNull: false,
+    })
+    public raw_time: number;
 
     @Column({
         type: DataType.DATE,
         allowNull: true,
     })
-    public readAt?: string;
+    public receive_at?: string;
 
     @Column({
         type: DataType.DATE,
         allowNull: true,
     })
-    public sendAt?: string;
+    public read_at?: string;
+
+    @Column({
+        type: DataType.DATE,
+        allowNull: true,
+    })
+    public send_at?: string;
 
     @Column({
         type: DataType.UUID,

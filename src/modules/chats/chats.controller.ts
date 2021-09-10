@@ -9,7 +9,7 @@ export class ChatsController {
   constructor(private readonly chatsService: ChatsService) { }
 
   @Post('/send_message')
-  sendMessage(@Body() sendMessage: messageDto) {
+  sendMessage(@Body() sendMessage: CreateChatDto) {
     return this.chatsService.sendMessage(sendMessage);
   }
 
