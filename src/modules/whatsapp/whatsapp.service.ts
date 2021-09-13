@@ -1,13 +1,15 @@
-import { forwardRef, Inject, Injectable, Logger, OnModuleInit, UnprocessableEntityException } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, InternalServerErrorException, Logger, OnModuleInit, UnprocessableEntityException } from '@nestjs/common';
 import { CHAT_REPOSITORY, WHATSAPP_REPOSITORY } from '../../core/constants';
 import { ChatsService } from '../chats/chats.service';
-import { Chat } from '../chats/entities/chat.entity';
 import { messageDto } from './dto/message.dto';
-import { Whatsapp } from './entities/whatsapp.entity';
 import mime = require('mime-types');
 import { Message } from 'venom-bot';
 import { CreateChatDto } from '../chats/dto/create-chat.dto';
 import { MessageType, SenderType } from '../../enums/chat.enum';
+import { SendImage } from '../chats/dto/send-image.dto';
+import { SendFile } from '../chats/dto/send-file.dto';
+import { SendMessage } from '../chats/interface/send-message.interface';
+import { CustomerService } from '../customer/customer.service';
 
 const moment = require('moment');
 const venom = require('venom-bot');
@@ -17,8 +19,9 @@ const fs = require('fs');
 export class WhatsappService implements OnModuleInit {
 
   constructor(
+    private customerService: CustomerService,
     @Inject(forwardRef(() => ChatsService))
-    private chatService: ChatsService
+    private chatService: ChatsService,
   ) { }
   private readonly logger = new Logger(WhatsappService.name);
   private client;
@@ -61,11 +64,19 @@ export class WhatsappService implements OnModuleInit {
   private venomFunction(client) {
     client.onMessage(async (message: Message) => {
       if (message.isGroupMsg === false) {
-        if (message.isMedia === true || message.isMMS === true) {
-          await this.getMessageMedia(message);
+        const checkCustomer = await this.customerService.findCustomerByTelephone(this.convertPhoneNumber(message.from, false));
+        if (checkCustomer) {
+          if (message.body === 'Hi') {
+            await this.sendImage({
+              telephone: message.from,
+              imageUrl: new URL("https://cdn.discordapp.com/attachments/580654415145598977/885795152650731530/20210910_145302.jpg"),
+              imageName: 'ini gambar',
+              caption: '',
+            });
+          }
+          await this.getAllChat(message.chatId)
         } else {
-          await this.getAllChat(message)
-          await this.saveMessage(message);
+
         }
       }
     });
@@ -91,25 +102,34 @@ export class WhatsappService implements OnModuleInit {
   private async getMessageMedia(message: Message) {
     try {
       const buffer = await this.client.decryptFile(message);
-      const fileName = `aloha.${mime.extension(message.mimetype)}`;
+      const storagePath = 'storage/';
+      const path = `file-message/${moment(message.timestamp * 1000).format('YYYY-MM-DD')}/aloha-`;
+      if (!fs.existsSync('./' + storagePath + path)) {
+        fs.mkdirSync('./' + storagePath + path, { recursive: true });
+      }
+      const fileName = `${moment().format('yyyy-MM-dd--HH-mm-ss-SSS')}.${mime.extension(message.mimetype)}`
 
-      const path = `./storage/file-message/aloha-${new Date(),
-        'yyyy-MM-dd--HH-mm-ss-SSS'
-        }.${mime.extension(message.mimetype)}`
-
-      await fs.writeFile(path, buffer, (err) => {
+      await fs.writeFile('./' + storagePath + path + fileName, buffer, (err) => {
         if (err) {
           this.logger.error('Error while getting message media')
           console.error(err)
           return
         }
-      })
+      });
+      return {
+        path: path,
+        fileName: fileName,
+        fullPathName: path + fileName,
+        mime: message.mimetype,
+        url: `${process.env.APP_URL}${path + fileName}`,
+        size: Buffer.from(buffer).length
+      }
     } catch (err) {
       console.error(err)
     }
   }
 
-  convertPhoneNumber(telephone: string | number): string {
+  convertPhoneNumber(telephone: string | number, server: boolean = true): string {
     const regex = '/[^0-9]/';
     let result = '';
 
@@ -129,16 +149,49 @@ export class WhatsappService implements OnModuleInit {
         result = '62' + telephone.substr(1);
       }
     }
-    return result + '@c.us';
+    return result + (server ? '@c.us' : '');
   }
 
-  async sendMessage(message: messageDto) {
+  async sendMessage(message: messageDto): Promise<SendMessage> {
     try {
       return this.client.sendText(this.convertPhoneNumber(message.telephone), message.body);
     } catch (error) {
       this.logger.error(error);
       throw new UnprocessableEntityException()
     }
+  }
+
+  async sendImage(message: SendImage): Promise<SendImage> {
+    try {
+      return await this.client.sendImage(
+        this.convertPhoneNumber(message.telephone),
+        message.imageUrl.toString(),
+        message.imageName,
+        message.caption
+      );
+    } catch (error) {
+      this.logger.error("failed to send image to " + message.telephone);
+      throw new UnprocessableEntityException();
+    }
+  }
+
+  async sendFile(message: SendFile): Promise<void> {
+    try {
+      await this.client.sendFile(
+        this.convertPhoneNumber(message.telephone),
+        message.fileUrl.toString(),
+        message.imageName,
+        message.caption
+      );
+    } catch (error) {
+      this.logger.error("failed to send file to " + message.telephone);
+      throw new UnprocessableEntityException();
+    }
+  }
+
+  async loadMoreChat(chatId: string): Promise<Message[]> {
+    const result: Message[] = await this.client.loadEarlierMessages(chatId);
+    return result;
   }
 
   async sendGreetingMessage() {
@@ -160,25 +213,55 @@ export class WhatsappService implements OnModuleInit {
     return await this.client.getConnectionState();
   }
 
-  async getAllChat(message: Message) {
-    const chat = await this.client.getAllMessagesInChat(message.chatId);
-    fs.writeFileSync('./storage/all-messages.json', JSON.stringify(chat));
+  async getAllChat(chatId: string) {
+    try {
+      const chats: Message[] = await this.client.getAllMessagesInChat(chatId);
+      const messages: CreateChatDto[] = [];
+      let count = 0;
+
+      for (const chat of chats) {
+        const findChat: number = await this.chatService.findMessageByChatId(chat.id);
+        if (findChat <= 0) {
+          if (chat.isMedia === true || chat.isMMS === true) {
+            const messageMedia = await this.getMessageMedia(chat);
+            chat.body = JSON.stringify(messageMedia);
+          }
+          messages.push(this.convertMessage(chat));
+          count++
+        } else if (findChat == 1) {
+          await this.chatService.updateMessage(this.convertMessage(chat));
+        }
+      }
+      await this.chatService.createBatchMessage(messages);
+
+      if (count == chats.length) {
+        await this.loadMoreChat(chatId);
+        await this.getAllChat(chatId);
+      }
+    } catch (error) {
+      throw new InternalServerErrorException()
+    }
   }
 
   async saveMessage(message: Message) {
+    const createMessage: CreateChatDto = this.convertMessage(message);
+    this.chatService.createMessage(createMessage)
+  }
+
+  private convertMessage(message: Message): CreateChatDto {
     const createMessage: CreateChatDto = {
+      chat_id: message.id,
       content: message.body,
       telephone: this.convertPhoneNumber(message.from),
       customer_id: '123',
-      user_id: '123',
+      user_id: message.sender.isMe ? '123' : null,
       raw_time: message.t,
-      message_type: MessageType.text,
-      receive_at: moment().tz("Asia/Jakarta").format('YYYY-MM-DD HH:mm:ss'),
-      sender_type: SenderType.customer,
-      send_at: moment().tz("Asia/Jakarta").format('YYYY-MM-DD HH:mm:ss'),
+      message_type: message.isMedia === true || message.isMMS === true ? MessageType.media : MessageType.text,
+      receive_at: moment(message.t * 1000).tz("Asia/Jakarta").format('YYYY-MM-DD HH:mm:ss'),
+      sender_type: message.sender.isMe ? SenderType.user : SenderType.customer,
+      send_at: moment(message.t * 1000).tz("Asia/Jakarta").format('YYYY-MM-DD HH:mm:ss'),
     }
 
-    console.log(MessageType.text)
-    this.chatService.createMessage(createMessage)
+    return createMessage;
   }
 }

@@ -11,9 +11,17 @@ export class Chat extends Model<Chat> {
         type: DataType.UUID,
         defaultValue: DataType.UUIDV4,
         allowNull: false,
-        primaryKey: true
+        primaryKey: true,
+        unique: true,
     })
     public id?: string;
+
+    @Column({
+        type: DataType.STRING,
+        allowNull: true,
+        unique: true,
+    })
+    public chat_id?: string;
 
     @Column({
         type: DataType.TEXT,
@@ -50,9 +58,9 @@ export class Chat extends Model<Chat> {
 
     @Column({
         type: DataType.INTEGER,
-        allowNull: false,
+        allowNull: true,
     })
-    public raw_time: number;
+    public raw_time?: number;
 
     @Column({
         type: DataType.DATE,
@@ -80,7 +88,7 @@ export class Chat extends Model<Chat> {
 
     @Column({
         type: DataType.UUID,
-        allowNull: false,
+        allowNull: true,
     })
-    public user_id: string;
+    public user_id?: string;
 }

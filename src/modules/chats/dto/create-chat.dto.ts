@@ -2,6 +2,11 @@ import { IsDate, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString } from "clas
 import { ChatPriority, MessageType, SenderType } from "../../../enums/chat.enum";
 
 export class CreateChatDto {
+
+    @IsOptional()
+    @IsString()
+    public chat_id?: string;
+
     @IsNotEmpty()
     @IsString()
     public content: string;
@@ -22,11 +27,11 @@ export class CreateChatDto {
     @IsEnum(SenderType)
     public sender_type?: SenderType = SenderType.user;
 
-    @IsNotEmpty()
+    @IsOptional()
     @IsNumber()
-    public raw_time: number;
+    public raw_time?: number;
 
-    @IsNotEmpty()
+    @IsOptional()
     @IsDate()
     public receive_at?: Date;
 
@@ -42,7 +47,7 @@ export class CreateChatDto {
     @IsString()
     public customer_id: string;
 
-    @IsNotEmpty()
+    @IsOptional()
     @IsString()
-    public user_id: string;
+    public user_id?: string;
 }
