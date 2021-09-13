@@ -10,6 +10,7 @@ import { SendImage } from '../chats/dto/send-image.dto';
 import { SendFile } from '../chats/dto/send-file.dto';
 import { SendMessage } from '../chats/interface/send-message.interface';
 import { CustomerService } from '../customer/customer.service';
+import { SchedulerRegistry } from '@nestjs/schedule';
 
 const moment = require('moment');
 const venom = require('venom-bot');
@@ -20,6 +21,7 @@ export class WhatsappService implements OnModuleInit {
 
   constructor(
     private customerService: CustomerService,
+    private schedulerRegistry: SchedulerRegistry,
     @Inject(forwardRef(() => ChatsService))
     private chatService: ChatsService,
   ) { }
@@ -64,19 +66,17 @@ export class WhatsappService implements OnModuleInit {
   private venomFunction(client) {
     client.onMessage(async (message: Message) => {
       if (message.isGroupMsg === false) {
-        const checkCustomer = await this.customerService.findCustomerByTelephone(this.convertPhoneNumber(message.from, false));
-        if (checkCustomer) {
-          if (message.body === 'Hi') {
-            await this.sendImage({
-              telephone: message.from,
-              imageUrl: new URL("https://cdn.discordapp.com/attachments/580654415145598977/885795152650731530/20210910_145302.jpg"),
-              imageName: 'ini gambar',
-              caption: '',
-            });
-          }
-          await this.getAllChat(message.chatId)
-        } else {
+        const key: string = message.from;
 
+        if (this.findTimeout(key)) {
+          this.registeringCustomer(message);
+        } else {
+          const checkCustomer = await this.customerService.findCustomerByTelephone(this.convertPhoneNumber(message.from, false));
+          if (checkCustomer) {
+            await this.getAllChat(message.chatId)
+          } else {
+            this.registeringCustomer(message);
+          }
         }
       }
     });
@@ -194,18 +194,22 @@ export class WhatsappService implements OnModuleInit {
     return result;
   }
 
-  async sendGreetingMessage() {
+  async sendGreetingMessage(telephone: string) {
     try {
-      await this.client.sendText(
-        '6281391386392@c.us',
-        `Halo Pelanggan setia Raja Dinar.\n\nTerima kasih sudah menghubungi kami.\nKami adalah pemotongan ayam yang dapat menyesuaikan dg kebutuhan Anda.\n\nSilahkan pilih lokasi Anda \nKetik 1 untuk wilayah *JABODETABEK* \nKetik 2 untuk wilayah *Luar Pulau Jawa*\nKetik 3 untuk *Produk/Sampingan*\nKetik 4 untuk pendaftaran *RESELLER*`);
+      await this.sendMessage({
+        telephone: telephone,
+        body: `Halo Pelanggan setia Raja Dinar.\n\nTerima kasih sudah menghubungi kami.\nKami adalah pemotongan ayam yang dapat menyesuaikan dg kebutuhan Anda.\n\nSilahkan pilih lokasi Anda \nKetik 1 untuk wilayah *JABODETABEK* \nKetik 2 untuk wilayah *Luar Pulau Jawa*\nKetik 3 untuk *Produk/Sampingan*\nKetik 4 untuk pendaftaran *RESELLER*`
+      });
     } catch (error) {
       this.logger.error(error)
     }
   }
 
-  async sendWelcomeMessage(message: messageDto) {
-    message.body = `Terima kasih, sales yang bersangkutan akan segera menghubungi anda`;
+  async sendWelcomeMessage(telephone: string, salesName: string) {
+    const message = {
+      telephone: telephone,
+      body: `Terima kasih telah mendaftar, anda telah terhubung dengan ${salesName}`
+    };
     this.client.sendText(this.convertPhoneNumber(message.telephone), message.body)
   }
 
@@ -264,4 +268,57 @@ export class WhatsappService implements OnModuleInit {
 
     return createMessage;
   }
+
+  private async registeringCustomer(message: Message) {
+    const key: string = message.from;
+    let body: string = message.body;
+
+    if (!this.findTimeout(key)) {
+      await this.sendGreetingMessage(key)
+      await this.registerTimeOut(message);
+    } else {
+      body = body.trim();
+      if (!['1', '2', '3', '4'].includes(body)) {
+        await this.sendMessage({
+          telephone: key,
+          body: `Mohon maaf pilihan yang anda pilih tidak ada, silahkan ketik angka 1-4`
+        });
+        this.registerTimeOut(message);
+      } else {
+        await this.sendWelcomeMessage(key, 'Sari');
+      }
+    }
+  }
+
+  private registerTimeOut(data: Message) {
+    const key: string = data.from;
+    let time = parseInt(process.env.MESSAGE_TIMEOUT);
+
+    const callback = async () => {
+      await this.sendMessage({
+        telephone: key,
+        body: 'Mohon maaf anda melebihi batas waktu pendaftaran, silahkan mengirim pesan untuk melakukan pendaftaran lagi.',
+      });
+      this.schedulerRegistry.deleteTimeout(key);
+    };
+
+    const searchTimeout = this.findTimeout(key);
+    if (searchTimeout) {
+      time = parseInt(process.env.MESSAGE_TIMEOUT);
+      this.schedulerRegistry.deleteTimeout(key);
+    }
+    const timeout = setTimeout(callback, time);
+    this.schedulerRegistry.addTimeout(key, timeout);
+  }
+
+
+  private findTimeout(key: string): boolean {
+    try {
+      this.schedulerRegistry.getTimeout(key);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
 }

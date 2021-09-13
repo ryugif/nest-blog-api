@@ -4,6 +4,7 @@ import { WhatsappController } from './whatsapp.controller';
 import { whatsappProviders } from './whatsapp.provider';
 import { ChatsModule } from '../chats/chats.module';
 import { CustomerModule } from '../customer/customer.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   controllers: [WhatsappController],
@@ -11,6 +12,7 @@ import { CustomerModule } from '../customer/customer.module';
   exports: [WhatsappService],
   imports: [
     CustomerModule,
+    ScheduleModule.forRoot(),
     forwardRef(() => ChatsModule)
   ]
 })

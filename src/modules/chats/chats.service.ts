@@ -41,10 +41,6 @@ export class ChatsService {
     };
   }
 
-  async sendButton() {
-    return await this.whatsAppService.sendGreetingMessage()
-  }
-
   async createMessage(message: CreateChatDto): Promise<Chat> {
     return await this.chat.create(message);
   }

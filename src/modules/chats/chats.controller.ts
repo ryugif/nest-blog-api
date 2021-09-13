@@ -16,11 +16,6 @@ export class ChatsController {
     return this.chatsService.sendMessage(sendMessage);
   }
 
-  @Post('/send_button')
-  sendButton() {
-    return this.chatsService.sendButton();
-  }
-
   @Get('/chat_preview')
   async GetChatPreview(@Query() customers: GetChatPreview) {
     return await this.chatsService.getMessagePreview(customers.customer_id);

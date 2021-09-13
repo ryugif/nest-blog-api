@@ -7,5 +7,8 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 export class CustomerController {
   constructor(private readonly customerService: CustomerService) { }
 
-
+  @Get()
+  async loginCRM() {
+    return await this.customerService.login()
+  }
 }
